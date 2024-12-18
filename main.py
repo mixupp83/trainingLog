@@ -78,6 +78,7 @@ class TrainingLogApp:
         self.repetitions_entry.delete(0, tk.END)
         messagebox.showinfo("Успешно", "Запись успешно добавлена!")
 
+
     def view_records(self):
         data = load_data()
         records_window = Toplevel(self.root)
