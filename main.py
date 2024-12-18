@@ -3,6 +3,8 @@ from tkinter import ttk, Toplevel, messagebox
 import json
 from datetime import datetime
 import csv
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 # Файл для сохранения данных
 data_file = 'training_log.json'
@@ -57,6 +59,15 @@ class TrainingLogApp:
 
         self.export_button = ttk.Button(self.root, text="Экспорт в CSV", command=self.export_to_csv)
         self.export_button.grid(column=0, row=6, columnspan=2, pady=10)
+
+        self.import_button = ttk.Button(self.root, text="Импорт из CSV", command=self.import_from_csv)
+        self.import_button.grid(column=0, row=7, columnspan=2, pady=10)
+
+        self.stats_button = ttk.Button(self.root, text="Статистика по упражнениям", command=self.show_exercise_stats)
+        self.stats_button.grid(column=0, row=8, columnspan=2, pady=10)
+
+        self.progress_button = ttk.Button(self.root, text="Визуализация прогресса", command=self.visualize_progress)
+        self.progress_button.grid(column=0, row=9, columnspan=2, pady=10)
 
     def add_entry(self):
         date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -227,6 +238,112 @@ class TrainingLogApp:
                 writer.writerow([entry['date'], entry['exercise'], entry['weight'], entry['repetitions']])
 
         messagebox.showinfo("Успешно", "Данные успешно экспортированы в файл training_log.csv!")
+
+    def import_from_csv(self):
+        try:
+            with open('training_log.csv', 'r', encoding='utf-8') as file:
+                reader = csv.reader(file)
+                next(reader)  # Пропускаем заголовок
+                data = load_data()
+                for row in reader:
+                    if len(row) == 4:
+                        data.append({
+                            'date': row[0],
+                            'exercise': row[1],
+                            'weight': row[2],
+                            'repetitions': row[3]
+                        })
+                save_data(data)
+                messagebox.showinfo("Успешно", "Данные успешно импортированы из файла training_log.csv!")
+        except FileNotFoundError:
+            messagebox.showerror("Ошибка", "Файл training_log.csv не найден!")
+
+    def show_exercise_stats(self):
+        data = load_data()
+        if not data:
+            messagebox.showerror("Ошибка", "Нет данных для отображения статистики!")
+            return
+
+        exercises = {}
+        for entry in data:
+            exercise = entry['exercise']
+            weight = float(entry['weight'])
+            repetitions = int(entry['repetitions'])
+            if exercise not in exercises:
+                exercises[exercise] = {'total_weight': 0, 'total_repetitions': 0}
+            exercises[exercise]['total_weight'] += weight
+            exercises[exercise]['total_repetitions'] += repetitions
+
+        stats_window = Toplevel(self.root)
+        stats_window.title("Статистика по упражнениям")
+
+        tree = ttk.Treeview(stats_window, columns=("Упражнение", "Суммарный вес", "Суммарные повторения"), show="headings")
+        tree.heading('Упражнение', text="Упражнение")
+        tree.heading('Суммарный вес', text="Суммарный вес")
+        tree.heading('Суммарные повторения', text="Суммарные повторения")
+
+        for exercise, stats in exercises.items():
+            tree.insert('', tk.END, values=(exercise, stats['total_weight'], stats['total_repetitions']))
+
+        tree.pack(expand=True, fill=tk.BOTH)
+
+    def visualize_progress(self):
+        data = load_data()
+        if not data:
+            messagebox.showerror("Ошибка", "Нет данных для визуализации!")
+            return
+
+        # Создаем новое окно для визуализации
+        progress_window = Toplevel(self.root)
+        progress_window.title("Визуализация прогресса")
+
+        # Создаем виджет для выбора упражнения
+        ttk.Label(progress_window, text="Выберите упражнение:").grid(column=0, row=0, padx=5, pady=5)
+        exercise_var = tk.StringVar()
+        exercise_combobox = ttk.Combobox(progress_window, textvariable=exercise_var)
+        exercise_combobox['values'] = list(set(entry['exercise'] for entry in data))
+        exercise_combobox.grid(column=1, row=0, padx=5, pady=5)
+
+        def plot_progress():
+            selected_exercise = exercise_var.get()
+            if not selected_exercise:
+                messagebox.showerror("Ошибка", "Выберите упражнение!")
+                return
+
+            # Фильтруем данные по выбранному упражнению
+            filtered_data = [entry for entry in data if entry['exercise'] == selected_exercise]
+            if not filtered_data:
+                messagebox.showerror("Ошибка", "Нет данных для выбранного упражнения!")
+                return
+
+            dates = [datetime.strptime(entry['date'], '%Y-%m-%d %H:%M:%S') for entry in filtered_data]
+            weights = [float(entry['weight']) for entry in filtered_data]
+            repetitions = [int(entry['repetitions']) for entry in filtered_data]
+
+            # Создаем график
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 6))
+            ax1.plot(dates, weights, marker='o', label='Вес')
+            ax1.set_title(f"Изменение веса для упражнения: {selected_exercise}")
+            ax1.set_xlabel("Дата")
+            ax1.set_ylabel("Вес")
+            ax1.legend()
+
+            ax2.plot(dates, repetitions, marker='o', label='Повторения', color='orange')
+            ax2.set_title(f"Изменение повторений для упражнения: {selected_exercise}")
+            ax2.set_xlabel("Дата")
+            ax2.set_ylabel("Повторения")
+            ax2.legend()
+
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+
+            # Отображаем график в новом окне
+            canvas = FigureCanvasTkAgg(fig, master=progress_window)
+            canvas.draw()
+            canvas.get_tk_widget().grid(column=0, row=2, columnspan=2)
+
+        plot_button = ttk.Button(progress_window, text="Построить график", command=plot_progress)
+        plot_button.grid(column=0, row=1, columnspan=2, pady=10)
 
 def main():
     root = tk.Tk()
